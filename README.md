@@ -1,10 +1,12 @@
 Emit marker into stdout on receipt of signal. Designed to run in a shell, wrapping another program's output via a pipe.
 
+Loosely modeled after https://github.com/firesock/pipe-marker.
+
 # Usage
 
 ## Build and install the binary
 
-Run this from the directory containing this repository:
+Run this from the repository root:
 
 ```shell
 go install
