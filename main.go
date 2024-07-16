@@ -27,6 +27,7 @@ func reader(send chan<- []byte, enabled bool) {
 				return
 			}
 		}
+		close(send)
 	}
 }
 
@@ -45,7 +46,12 @@ func marker(notif <-chan os.Signal, out chan<- []byte) {
 func writer(recv <-chan []byte, done chan os.Signal) {
 	writer := bufio.NewWriter(os.Stdout)
 	for {
-		stream := <-recv
+		stream, ok := <-recv
+		if !ok {
+			done <- syscall.SIGINT
+			return
+		}
+
 		stream = append(stream, '\n')
 
 		if _, err := writer.Write(stream); err != nil {
@@ -68,17 +74,13 @@ func main() {
 	markerChan := make(chan os.Signal, 2)
 	signal.Notify(markerChan, signals...)
 
-	// handle C-C or stream end
-	done := make(chan os.Signal)
-	//interruptSignal := syscall.SIGINT
-	//signal.Notify(done, interruptSignal)
-
-	// TODO make data chan buffered with the right size not to lose content
+	doneChan := make(chan os.Signal)
 	dataChan := make(chan []byte)
+
 	go reader(dataChan, *enabled)
-	go writer(dataChan, done)
+	go writer(dataChan, doneChan)
 	go marker(markerChan, dataChan)
 
 	// wait for the goroutines to finish
-	<-done
+	<-doneChan
 }
