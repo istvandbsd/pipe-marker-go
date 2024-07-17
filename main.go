@@ -15,31 +15,32 @@ var signalMarkers = map[os.Signal]string{
 }
 
 // Reads from stdin and sends output forward.
-func reader(send chan<- []byte, enabled bool) {
+func reader(send chan<- []byte) {
 	scanner := bufio.NewScanner(os.Stdin)
-	if enabled { // TODO synchronise `enabled` between goroutines?
-		for scanner.Scan() {
-			send <- []byte(scanner.Text())
-		}
-		if err := scanner.Err(); err != nil {
-			_, err := fmt.Fprintln(os.Stderr, "encountered while reading stdin:", err)
-			if err != nil {
-				return
-			}
-		}
-		close(send)
+
+	for scanner.Scan() {
+		send <- []byte(scanner.Text())
 	}
+	if err := scanner.Err(); err != nil {
+		_, err := fmt.Fprintln(os.Stderr, "encountered while reading stdin:", err)
+		if err != nil {
+			return
+		}
+	}
+	close(send)
+
 }
 
 // Catches signals on the dedicated channel and inserts marker into stream on another channel
-func marker(notif <-chan os.Signal, out chan<- []byte) {
-	for {
-		s := <-notif
-		sigInstance := s.(syscall.Signal)
-		emit := []byte(signalMarkers[sigInstance])
-		out <- emit
+func marker(notif <-chan os.Signal, out chan<- []byte, enabled bool) {
+	if enabled {
+		for {
+			s := <-notif
+			sigInstance := s.(syscall.Signal)
+			emit := []byte(signalMarkers[sigInstance])
+			out <- emit
+		}
 	}
-
 }
 
 // Writes the potentially aggregated stream to stdout.
@@ -77,9 +78,11 @@ func main() {
 	doneChan := make(chan os.Signal)
 	dataChan := make(chan []byte)
 
-	go reader(dataChan, *enabled)
+	go func() {
+		reader(chan<- []byte(dataChan))
+	}()
 	go writer(dataChan, doneChan)
-	go marker(markerChan, dataChan)
+	go marker(markerChan, dataChan, *enabled)
 
 	// wait for the goroutines to finish
 	<-doneChan
